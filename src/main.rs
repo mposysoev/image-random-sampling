@@ -1,76 +1,111 @@
-use image::GenericImageView;
-use minifb::{Key, ScaleMode, Window, WindowOptions};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, Pixel};
 use rand::Rng;
 use std::env;
 
+struct ImageProcessor {
+    file_name: String,
+    percent_of_iterations: usize,
+    img: DynamicImage,
+    modified_image: DynamicImage,
+}
+
+enum Shape {
+    Full,
+    WidthSide,
+    HeightSide, 
+}
+
+impl ImageProcessor {
+    fn new(file_name: String, percent_of_iterations: usize) -> Self {
+        let img = image::open(&file_name).expect("Failed to open image file");
+        let modified_image = DynamicImage::new_rgba8(img.width(), img.height());
+
+        ImageProcessor {
+            file_name,
+            percent_of_iterations,
+            img,
+            modified_image,
+        }
+    }
+
+    fn calculate_number_of_iterations(&self, shape: Shape) -> usize {
+        let (w, h) = (self.img.width(), self.img.height());
+        let param: usize;
+        match shape {
+            Shape::Full => param = (w * h) as usize,
+            Shape::WidthSide => param = w as usize,
+            Shape::HeightSide => param = h as usize,
+        };
+        param / 100 * self.percent_of_iterations
+    }
+
+    
+
+    fn random_sampling_dots(&mut self) {
+        let number_of_iterations = self.calculate_number_of_iterations(Shape::Full);
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..number_of_iterations {
+            let random_x = rng.gen_range(0..self.img.width());
+            let random_y = rng.gen_range(0..self.img.height());
+            let random_pixel = self.img.get_pixel(random_x, random_y);
+            self.modified_image
+                .put_pixel(random_x, random_y, random_pixel);
+        }
+    }
+
+    fn random_sampling_lines_x(&mut self) {
+        let number_of_iterations = self.calculate_number_of_iterations(Shape::WidthSide);
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..number_of_iterations {
+            let random_x = rng.gen_range(0..self.img.width());
+            for i in 0..self.img.height() {
+                let random_pixel = self.img.get_pixel(random_x, i);
+                self.modified_image
+                .put_pixel(random_x, i, random_pixel);
+            }
+        }
+    }
+
+    fn random_sampling_lines_y(&mut self) {
+        let number_of_iterations = self.calculate_number_of_iterations(Shape::HeightSide);
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..number_of_iterations {
+            let random_y = rng.gen_range(0..self.img.height());
+            for i in 0..self.img.width() {
+                let random_pixel = self.img.get_pixel(i, random_y);
+                self.modified_image
+                .put_pixel(i, random_y, random_pixel);
+            }
+        }
+    }
+
+    fn save_modified_image(&self, prefix: String) {
+        let file_name_output = format!("{}-{}", prefix, self.file_name);
+        self.modified_image
+            .save(file_name_output)
+            .expect("Failed to save modified image");
+    }
+}
+
 fn main() {
-    // Parse args and load the image
+    // Parse command line arguments
     let args: Vec<String> = env::args().collect();
-    let image = image::open(&args[1]).unwrap();
-    let number_of_iterations: usize = args[2].parse::<usize>().unwrap();
-    let (width, height) = image.dimensions();
+    let file_name = args.get(1).expect("No file name provided").clone();
+    let percent_of_iterations = args
+        .get(2)
+        .and_then(|arg| arg.parse::<usize>().ok())
+        .expect("Invalid percentage of iterations");
 
-    // Convert the image to RGBA8 format
-    let image_data = image.to_rgba8().into_raw();
+    // Process the image
+    let mut image_sampled_dots = ImageProcessor::new(file_name.clone(), percent_of_iterations);
+    image_sampled_dots.random_sampling_dots();
+    image_sampled_dots.save_modified_image("Random-Sampled-Dots".to_string());
 
-    // Convert the image data to u32 format
-    let mut pixel_buffer = Vec::new();
-    for pixel in image_data.chunks_exact(4) {
-        let red = pixel[0] as u32;
-        let green = pixel[1] as u32;
-        let blue = pixel[2] as u32;
-        let u32_pixel = (red << 16) | (green << 8) | blue;
-        pixel_buffer.push(u32_pixel);
-    }
-
-    // Create a window with the same dimensions as the image
-    let mut window = Window::new(
-        "Input image",
-        width as usize,
-        height as usize,
-        WindowOptions {
-            scale_mode: ScaleMode::Stretch,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    // Display the image in the window
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        window
-            .update_with_buffer(&pixel_buffer, width as usize, height as usize)
-            .unwrap();
-    }
-
-    let mut rng = rand::thread_rng();
-
-    // Create new image
-    let mut new_image_sampled = Vec::new();
-
-    // Fill with black color
-    for _pixel in image_data.chunks_exact(4) {
-        let u32_pixel = 0;
-        new_image_sampled.push(u32_pixel);
-    }
-
-    for _ in 0..number_of_iterations {
-        let rand_pixel: usize = rng.gen_range(0..(width * height) as usize);
-        new_image_sampled[rand_pixel] = pixel_buffer[rand_pixel];
-    }
-
-    let mut window_output = Window::new(
-        "Output image",
-        width as usize,
-        height as usize,
-        WindowOptions {
-            scale_mode: ScaleMode::Stretch,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    while window_output.is_open() && !window_output.is_key_down(Key::Escape) {
-        window_output
-            .update_with_buffer(&new_image_sampled, width as usize, height as usize)
-            .unwrap();
-    }
+    let mut image_sampled_lines = ImageProcessor::new(file_name.clone(), percent_of_iterations);
+    image_sampled_lines.random_sampling_lines_x();
+    image_sampled_lines.random_sampling_lines_y();
+    image_sampled_lines.save_modified_image("Random-Sampled-Lines".to_string());
 }
